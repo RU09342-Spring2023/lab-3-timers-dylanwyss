@@ -91,7 +91,7 @@ __interrupt void Port_2(void)
     {
         LED_Color = 0;
         // @TODO Add code to change which edge the interrupt should be looking for next
-        P2IES ^= BIT3;                         // Toggle edge
+        P2IES ^= BIT3;                         // Toggle rising/falling edge
 
     }
 
@@ -100,7 +100,7 @@ __interrupt void Port_2(void)
         LED_Color = 1;
         // @TODO Add code to change which edge the interrupt should be looking for next
         // Configure Button on P2.3 as input with pullup resistor
-        P2IES ^= BIT3;                         // Toggle edge
+        P2IES ^= BIT3;                         // Toggle rising/falling edge
     }
 }
 
