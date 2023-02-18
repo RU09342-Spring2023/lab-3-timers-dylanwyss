@@ -10,6 +10,8 @@
 
 #include <msp430.h>
 
+int speed;                              // Global variable to determine speed of blinking
+
 void gpioInit();
 void timerInit();
 
@@ -26,6 +28,7 @@ void main(){
 
     __bis_SR_register(LPM3_bits | GIE);
 
+    while(1){}
 }
 
 
@@ -46,7 +49,20 @@ void gpioInit(){
 
 void timerInit(){
     // @TODO Initialize Timer B1 in Continuous Mode using ACLK as the source CLK with Interrupts turned on
+    // Timer1_B3 setup
+    TB1CTL |= TBCLR;                        // Clear timer and dividers
+    TB1CTL |= TBSSEL__ACLK;                 // Source = ACLK
+    TB1CTL |= MC__UP;                       // Mode = Up
 
+    // Setup Timer Overflow IRQ
+    TB1CTL |= TBIE;                         // Enable TB1 Overflow IRQ
+    TB1CTL &= ~TBIFG;                       // Clear TB1 flag
+
+    // Setup Timer Compare IRQ
+    TB1CCTL0 |= CCIE;                       // Enable TB1 CCR0 Overflow IRQ
+    TB1CCR0 = 50000;
+    TB1CTL = TBSSEL_1 | MC_2;               // ACLK, continuous mode
+    TB1CCTL0 &= ~CCIFG;                     // Clear CCR0 Flag
 }
 
 
@@ -59,9 +75,19 @@ void timerInit(){
 __interrupt void Port_2(void)
 {
     // @TODO Remember that when you service the GPIO Interrupt, you need to set the interrupt flag to 0.
+    if (P2IES &= BIT3)
+        TB1CTL &= ~TBIFG;                       // Clear TB1 flag
+    else
+        TB1CTL |= TBIFG;
 
     // @TODO When the button is pressed, you can change what the CCR0 Register is for the Timer. You will need to track what speed you should be flashing at.
-
+    if (P2IN & BIT3)
+        if (TB1CCR0 < 150001)
+            TB1CCR0 += 50000;                       // Add offset to TB1CCR0
+        else
+            TB1CCR0 = 50000;                        // Reset offset to 50000
+    else
+        TB1CCR0 = TB1CCR0;
 }
 
 
@@ -70,6 +96,8 @@ __interrupt void Port_2(void)
 __interrupt void Timer1_B0_ISR(void)
 {
     // @TODO You can toggle the LED Pin in this routine and if adjust your count in CCR0.
+    P1OUT ^= BIT0;                          // Toggle Red LED
+    TB1CCTL0 &= ~CCIFG;                     // Clear CCR0 Flag
 }
 
 
