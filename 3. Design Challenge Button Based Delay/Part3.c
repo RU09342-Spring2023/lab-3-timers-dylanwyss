@@ -11,7 +11,7 @@
 
 #include <msp430.h>
 
-int timer_count = INITIAL_TIMER_VALUE;      // Default blinking time value
+unsigned short timer_count = INITIAL_TIMER_VALUE;      // Default blinking time value
 int timer_state = 0;                        // Determine if LED will blink by default value or value of LED time pressed
 
 void gpioInit();

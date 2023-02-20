@@ -13,6 +13,8 @@
 void gpioInit();
 void timerInit();
 
+unsigned int offset = 1000;
+
 void main(){
 
     WDTCTL = WDTPW | WDTHOLD;               // Stop watchdog timer
@@ -27,7 +29,7 @@ void main(){
     __bis_SR_register(LPM3_bits | GIE);
     __no_operation();                             // For debug
 
-    while(1){}
+    //while(1){}
 }
 
 
@@ -48,16 +50,11 @@ void gpioInit(){
 
 void timerInit(){
     // @TODO Initialize Timer B1 in Continuous Mode using ACLK as the source CLK with Interrupts turned on
-    // Timer1_B3 setup
-    TB1CTL |= TBCLR;                        // Clear timer and dividers
-    TB1CTL |= TBSSEL__SMCLK;                // Source = SMCLK
-    TB1CTL |= MC__CONTINUOUS;               // Mode = Continuous
 
     // Setup Timer Compare IRQ
     TB1CCTL0 |= CCIE;                       // Enable TB1 CCR0 Overflow IRQ
     TB1CCR0 = 50000;
     TB1CTL = TBSSEL_1 | MC_2;               // ACLK, continuous mode
-    TB1CCTL0 &= ~CCIFG;                     // Clear CCR0 Flag
 }
 
 
@@ -70,19 +67,16 @@ void timerInit(){
 __interrupt void Port_2(void)
 {
     // @TODO Remember that when you service the GPIO Interrupt, you need to set the interrupt flag to 0.
-    if (P2IES & BIT3)
-        TB1CTL &= ~TBIFG;                       // Clear TB1 flag
-    else
-        TB1CTL |= TBIFG;
+    P2IFG &= ~BIT3;                         // Clear P2.3 IFG
 
     // @TODO When the button is pressed, you can change what the CCR0 Register is for the Timer. You will need to track what speed you should be flashing at.
-    if (!(P2IN & BIT3))
-        if (TB1CCR0 < 150001)
-            TB1CCR0 += 50000;                       // Add offset to TB1CCR0
-        else
-            TB1CCR0 = 50000;                        // Reset offset to 50000
+
+    if (offset == 1000)
+        offset = 10000;
+    else if (offset == 10000)
+       offset = 50000;
     else
-        TB1CCR0 = TB1CCR0;
+        offset = 1000;
 }
 
 
@@ -92,7 +86,7 @@ __interrupt void Timer1_B0_ISR(void)
 {
     // @TODO You can toggle the LED Pin in this routine and if adjust your count in CCR0.
     P1OUT ^= BIT0;                          // Toggle Red LED
-    TB1CCTL0 &= ~CCIFG;                     // Clear CCR0 Flag
+    TB1CCR0 += offset;                      // Add Offset to TB1CCR0
 }
 
 
