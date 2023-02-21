@@ -11,8 +11,11 @@
 
 #include <msp430.h>
 
-unsigned short timer_count = INITIAL_TIMER_VALUE;      // Default blinking time value
-int timer_state = 0;                        // Determine if LED will blink by default value or value of LED time pressed
+unsigned long count_timer = 0;             // Default blinking time value
+unsigned int counting = 0;                  // Determine if LED will blink by default value or value of LED time pressed
+                                            // 0 = timer not counting, 1 = timer counting
+unsigned int rising_edge = 1;
+unsigned int falling_edge = 0;
 
 void gpioInit();
 void timerInit();
@@ -29,8 +32,7 @@ void main(){
     PM5CTL0 &= ~LOCKLPM5;
 
     __bis_SR_register(LPM3_bits | GIE);
-
-    while(1){}
+    __no_operation();                             // For debug
 }
 
 
@@ -54,7 +56,13 @@ void gpioInit(){
 
 void timerInit(){
     // Setup Timer Compare IRQ
+    TB0CCTL0 |= CCIE;                       // Enable TB0 CCR0 Overflow IRQ
+    TB0CCR0 = 1;
+    TB0CTL = TBSSEL_1 | MC_2;               // ACLK, continuous mode
+
+    // Setup Timer Compare IRQ
     TB1CCTL0 |= CCIE;                       // Enable TB1 CCR0 Overflow IRQ
+    TB1CCR0 = INITIAL_TIMER_VALUE;
     TB1CTL = TBSSEL_1 | MC_2;               // ACLK, continuous mode
 }
 
@@ -67,26 +75,42 @@ void timerInit(){
 #pragma vector=PORT2_VECTOR
 __interrupt void Port_2(void)
 {
-    P2IFG &= ~BIT3;                         // Clear P2.3 interrupt flag
-    if (!(timer_state))
+    P2IFG &= ~BIT3;                            // Clear P2.3 interrupt flag
+    if (rising_edge)
     {
-        timer_state = 1;
-        timer_count = 0;
-        P2IES ^= BIT3;                         // Toggle rising/falling edge
+        rising_edge = 0;
+        falling_edge = 1;
+        P2IES &= ~BIT3;                        // P2.3 Low --> High edge
+        counting = 1;
+        count_timer = 0;
     }
-    else
+    else if (falling_edge)
     {
-        timer_state = 0;
-        P2IES ^= BIT3;                         // Toggle rising/falling edge
+        rising_edge = 1;
+        falling_edge = 0;
+        P2IES |= BIT3;                         // P2.3 High --> Low edge
+        counting = 0;
     }
 }
 
 // Port 4 interrupt service routine
-#pragma vector=PORT2_VECTOR
+#pragma vector=PORT4_VECTOR
 __interrupt void Port_4(void)
 {
     P4IFG &= ~BIT1;                         // Clear P4.1 interrupt flag
-    timer_count = INITIAL_TIMER_VALUE;      // Reset timer value to initialized value 300
+    count_timer = INITIAL_TIMER_VALUE;      // Reset timer value to initialized value 10000
+    counting = 0;
+}
+
+// Timer B0 interrupt service routine
+#pragma vector = TIMER0_B0_VECTOR
+__interrupt void Timer0_B0_ISR(void)
+{
+    if (counting)
+        count_timer++;                      // If the button is pressed, continue to count the length
+                                            // to add to time of interrupt for LED blinking
+    else
+        count_timer = count_timer;
 }
 
 // Timer B1 interrupt service routine
@@ -94,14 +118,6 @@ __interrupt void Port_4(void)
 __interrupt void Timer1_B0_ISR(void)
 {
     P1OUT ^= BIT0;                          // Toggle Red LED
-    TB1CCR0 += timer_count;                 // Increment time between interrupts
-
-    if (timer_state)
-    {
-        timer_count++;                      // If the button is pressed, continue to count the length
-                                            // to add to time of interrupt for LED blinking
-    }
+    TB1CCR0 += count_timer;                 // Increment time between interrupts
 }
-
-
 

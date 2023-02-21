@@ -28,8 +28,6 @@ void main(){
 
     __bis_SR_register(LPM3_bits | GIE);
     __no_operation();                             // For debug
-
-    //while(1){}
 }
 
 
