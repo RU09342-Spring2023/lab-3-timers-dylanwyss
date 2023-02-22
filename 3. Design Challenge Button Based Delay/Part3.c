@@ -44,13 +44,13 @@ void gpioInit(){
     // Configure Button on P2.3 as input with pullup resistor
     P2OUT |= BIT3;                          // Configure P2.3 as pulled-up
     P2REN |= BIT3;                          // P2.3 pull-up register enable
-    P2IES &= ~BIT3;                         // P2.3 Low --> High edge
+    P2IES |= BIT3;                         // P2.3 High --> Low edge
     P2IE |= BIT3;                           // P2.3 interrupt enabled
 
     // Configure Button on P4.1 as input with pullup resistor
     P4OUT |= BIT1;                          // Configure P4.1 as pulled-up
     P4REN |= BIT1;                          // P4.1 pull-up register enable
-    P4IES &= ~BIT1;                         // P4.1 Low --> High edge
+    P4IES |= BIT1;                         // P4.1 High --> Low edge
     P4IE |= BIT1;                           // P4.1 interrupt enabled
 }
 
@@ -58,12 +58,12 @@ void timerInit(){
     // Setup Timer Compare IRQ
     TB0CCTL0 |= CCIE;                       // Enable TB0 CCR0 Overflow IRQ
     TB0CCR0 = 1;
-    TB0CTL = TBSSEL_1 | MC_2;               // ACLK, continuous mode
+    TB0CTL = TBSSEL_1 | MC_2 | ID_3;        // ACLK, continuous mode
 
     // Setup Timer Compare IRQ
     TB1CCTL0 |= CCIE;                       // Enable TB1 CCR0 Overflow IRQ
     TB1CCR0 = INITIAL_TIMER_VALUE;
-    TB1CTL = TBSSEL_1 | MC_2;               // ACLK, continuous mode
+    TB1CTL = TBSSEL_1 | MC_2 | ID_3;        // ACLK, continuous mode
 }
 
 
@@ -80,6 +80,7 @@ __interrupt void Port_2(void)
     {
         rising_edge = 0;
         falling_edge = 1;
+        P1OUT &= ~BIT0;                        // set red LED to low output
         P2IES &= ~BIT3;                        // P2.3 Low --> High edge
         counting = 1;
         count_timer = 0;
@@ -98,7 +99,7 @@ __interrupt void Port_2(void)
 __interrupt void Port_4(void)
 {
     P4IFG &= ~BIT1;                         // Clear P4.1 interrupt flag
-    count_timer = INITIAL_TIMER_VALUE;      // Reset timer value to initialized value 10000
+    TB1CCR0 = INITIAL_TIMER_VALUE;
     counting = 0;
 }
 
@@ -111,6 +112,7 @@ __interrupt void Timer0_B0_ISR(void)
                                             // to add to time of interrupt for LED blinking
     else
         count_timer = count_timer;
+    TB0CCR0 += 1;                           // Add offset to TB0CCR0
 }
 
 // Timer B1 interrupt service routine
