@@ -1,52 +1,140 @@
 # Design Challenge: Button-Based Delay
-This is the part of the lab where I want you to start from what we have done to build something new. I will be providing you just a .c file which is pretty empty and you will need to build a system which achieves a certain task. While I might give you hints, you are the one who needs to actually design the algorithm and test it.
+The code implemented for this design challenge is as follows:
 
-## System Description
-You will need to build a system which has the LED blinking speed controlled by how long you hold down a button. The system should boot up and begin blinking at a specific speed (maybe like 4Hz). When the user presses the button, you should begin timing how long that button is being held down for. Once the button has been released, the LED should begin blinking using the amount of time the button was held down at the period of it blinking. For example, if I hold it down for 3 seconds, the LED should then blink every 3 seconds. If the user presses the other button, you can then reset the system back to a default speed.
+The program begins by including any necessary libraries, functions, and variables that will be used later on in the code.
+```c
+#define INITIAL_TIMER_VALUE 10000
 
-## Pins/External Resources Needed
-- Red LED, P1.0
-- Button 0, P2.3
-- Button 1, P4.1
+#include <msp430.h>
 
-## Peripherals Needed
-- GPIO Peripheral
-- Timer B Peripheral
+unsigned long count_timer = 0;             // Default blinking time value
+unsigned int counting = 0;                  // Determine if LED will blink by default value or value of LED time pressed
+                                            // 0 = timer not counting, 1 = timer counting
+unsigned int rising_edge = 1;
+unsigned int falling_edge = 0;
 
-## How to approach this
-I would, as always, **WRITE DOWN OR DRAW YOUR SYSTEM AND FLOW**. It doesn't necessarily need a state machine, but *narating* and talking through what should be going on. You probably have seen be talk or write my code as functions first, and that is because I am actually speaking it out in my head what should be going on.
+void gpioInit();
+void timerInit();
+```
 
-### Designing with Interrupts
-This type of project where you will be balancing several interrupt routines requires a very different approach than what you might be used to. You will be designing a system which is **Event Driven**. This means that instead of thinking it through like "If the button is currently pressed, I am going to do this, then next I need to check this". You will end up thinking more like:
-- What should my processor be doing by default (answer for this, most likely nothing since it is interrupt driven).
-- The button interrupt is going to be going off when the button is pressed/released. What should I be doing in that event.
-- The Timer interrupt is going to be controlling the LED independently of everything else, so how should that interrupt be designed.
+The above variables need to be explained. 'count_timer' is the variable that holds information for how long the button has been pressed to then impact how long the LED blinks for. 'counting' declares true or false for if the timer should count how long the button has been held, and is true if the button has been pressed. 'rising_edge' is a true/false function that returns if the button is pressed on a rising clock edge. Likewise, 'falling_edge' is the same but for a falling edge.
 
-## Button Pressing
-Remember, you are timing how long a button is pressed down, so in your button interrupt, you will want to make sure you determine if the button is being pressed or released.
+Inside the main function, the watchdog timer is configured, the functions are called, power-on mode is set to high, and the interrupt is called out.
+```c
+void main(){
 
-## Timers and CCR_ Registers
-There are a total of **6 Capture/Compare Registers** in each timer peripheral. In the examples up to this point, we have used only one of the CCR register, but you can use several if you want to keep track of certain things. In the previous examples, we have used CCR0 to control the blinking speed. We can keep that the same, let's not mess with that. When trying to check the time, what you need to look into is:
-- **MC:** How can you *pause* the timer? Or is there a way to store the current time?
-- **TBCLR:** You can reset the timer counter, which might be useful for capturing time.
-- **Capture Mode (advanced):** The other function you can do in your CCR register is actually capture the current time. You can try to look into how to do this.
+    WDTCTL = WDTPW | WDTHOLD;               // Stop watchdog timer
 
-## Counter Overflow - A Real Problem
-If the counter inside the timer is a 16-bit number, that means the biggest number it can count up to is **65,535**. *"Ok, so..."*. If you have a clock that is 1MHz (1ns period), that means that the Timer Counter will overflow and reset every 65.535ms. **PROBLEM:** We will be holding down the button for much much much longer than that, so what can we do?
+    gpioInit();
+    timerInit();
 
-### Slower Clocks
-You can access the **ACLK** clock source which is a real-time clock running at 32,768Hz. This would mean that you could capture just about 2 seconds of time, but we still need to do something else.
+    // Disable the GPIO power-on default high-impedance mode
+    // to activate previously configured port settings
+    PM5CTL0 &= ~LOCKLPM5;
 
-### Clock Dividers (ID) [Recommended Approach]
-We can actually slow the clocks down using a set of clock dividers. We can control them with the **ID** fields in the Timer Control Registers. We can slow down the clock by factors of 2, 4, 8, 16, and even use an extended divider if need be.
+    __bis_SR_register(LPM3_bits | GIE);
+    __no_operation();                             // For debug
+}
+```
 
-### Timer Rollover Counts [Advise Against]
-We can also use a Global variable to count how many times the clock has rolled over and then use that to determine the blinking speed. So if the timer rolls over, we can then increment the value in the variable. For this lab, this might not be the best way to start your path in designing with the timers, since now you have to bounce between several interrupt vectors and then manage a global variable.
+Next up the peripherals need to be initialized. The red LED (P1.0) is initialized to a power-on state and is set to be an output. Both buttons (P2.3 and P4.1) are initialized to have a pull-up resistor where the interrupt is enabled going from the high to low edge of the clock cycle.
+```c
+void gpioInit(){
+    // Configure RED LED on P1.0 as Output
+    P1OUT &= ~BIT0;                         // Clear P1.0 output latch for a defined power-on state
+    P1DIR |= BIT0;                          // Set P1.0 to output direction
 
+    // Configure Button on P2.3 as input with pullup resistor
+    P2OUT |= BIT3;                          // Configure P2.3 as pulled-up
+    P2REN |= BIT3;                          // P2.3 pull-up register enable
+    P2IES |= BIT3;                         // P2.3 High --> Low edge
+    P2IE |= BIT3;                           // P2.3 interrupt enabled
 
-# Deliverables
-You will need to upload your code, well documented. You will also need a README for your code (you can replace this README) which will tell the user:
-- How does your code work?
-- How are the peripherals configured (what modes, what settings)?
-- What design considerations did you have to take to account for things like the timer rollover?
-- How should the user use your code?
+    // Configure Button on P4.1 as input with pullup resistor
+    P4OUT |= BIT1;                          // Configure P4.1 as pulled-up
+    P4REN |= BIT1;                          // P4.1 pull-up register enable
+    P4IES |= BIT1;                         // P4.1 High --> Low edge
+    P4IE |= BIT1;                           // P4.1 interrupt enabled
+}
+```
+
+Next up is the initialization of the timers. There are two timers used for this project: Timer B0 and Timer B1. Both timers are configured to enable overflow and are initialized to use the asynchronous clock (ACLK) in continuous mode. The only difference between these two initializations is that TB0 is set to the frequency of 1 Hz for the capture control register as it will count up if the button is held for every instance. However, TB1 is set to the previously defined initial value of 50000 Hz.
+```c
+void timerInit(){
+    // Setup Timer Compare IRQ
+    TB0CCTL0 |= CCIE;                       // Enable TB0 CCR0 Overflow IRQ
+    TB0CCR0 = 1;
+    TB0CTL = TBSSEL_1 | MC_2 | ID_3;        // ACLK, continuous mode
+
+    // Setup Timer Compare IRQ
+    TB1CCTL0 |= CCIE;                       // Enable TB1 CCR0 Overflow IRQ
+    TB1CCR0 = INITIAL_TIMER_VALUE;
+    TB1CTL = TBSSEL_1 | MC_2 | ID_3;        // ACLK, continuous mode
+}
+```
+
+For the interrupt service routine for button 2.3, the interrupt flag is cleared as the interrupt has been instantiated. If the interrupt occurs on a rising edge, it is then set to a falling edge, the LED stops lighting up, and the timer begins to count how long the button has been held being from the intialized value of 0. Meanwhile, if the interrupt occurs on a fallign edge, it is set to a rising edge.
+```c
+// Port 2 interrupt service routine
+#pragma vector=PORT2_VECTOR
+__interrupt void Port_2(void)
+{
+    P2IFG &= ~BIT3;                            // Clear P2.3 interrupt flag
+    if (rising_edge)
+    {
+        rising_edge = 0;
+        falling_edge = 1;
+        P1OUT &= ~BIT0;                        // set red LED to low output
+        P2IES &= ~BIT3;                        // P2.3 Low --> High edge
+        counting = 1;
+        count_timer = 0;
+    }
+    else if (falling_edge)
+    {
+        rising_edge = 1;
+        falling_edge = 0;
+        P2IES |= BIT3;                         // P2.3 High --> Low edge
+        counting = 0;
+    }
+}
+```
+
+Meanwhile, if the other button (4.3) is pressed, the flag is cleared and the LED returns to blinking the initial value.
+```c
+// Port 4 interrupt service routine
+#pragma vector=PORT4_VECTOR
+__interrupt void Port_4(void)
+{
+    P4IFG &= ~BIT1;                         // Clear P4.1 interrupt flag
+    TB1CCR0 = INITIAL_TIMER_VALUE;
+    counting = 0;
+}
+```
+
+The first timer counts how long the button has been held. If counting is true, then the value 'count_timer' is incremented. If not, then this value remains the same.
+```c
+// Timer B0 interrupt service routine
+#pragma vector = TIMER0_B0_VECTOR
+__interrupt void Timer0_B0_ISR(void)
+{
+    if (counting)
+        count_timer++;                      // If the button is pressed, continue to count the length
+                                            // to add to time of interrupt for LED blinking
+    else
+        count_timer = count_timer;
+    TB0CCR0 += 1;                           // Add offset to TB0CCR0
+}
+```
+
+Lastly, the second timer toggles the LED on and off for the duration that has been set up incrementing the capture control register by the 'count_timer' value which previous counted how long the button was held for.
+```c
+// Timer B1 interrupt service routine
+#pragma vector = TIMER1_B0_VECTOR
+__interrupt void Timer1_B0_ISR(void)
+{
+    P1OUT ^= BIT0;                          // Toggle Red LED
+    TB1CCR0 += count_timer;                 // Increment time between interrupts
+}
+```
+
+This code can be used to demonstrate the red LED blinking for the duration that button 2.3 was pressed, as intended.
